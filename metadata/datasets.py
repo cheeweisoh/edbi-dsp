@@ -70,7 +70,7 @@ DATASETS = [
                 "description": "Month of the observation (1–12)",
             },
             {
-                "column": "sector",
+                "column": "premise_type",
                 "type": "STRING",
                 "description": "Consumer sector (Residential, Commercial, Industrial)",
             },
