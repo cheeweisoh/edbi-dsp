@@ -35,3 +35,11 @@ def can_user_access_dataset(user, dataset):
     user_tags = set(user.get("tags", []))
 
     return required_tags.issubset(user_tags)
+
+
+def get_accessible_tables(user, datasets):
+    accessible = []
+    for ds in datasets:
+        if can_user_access_dataset(user, ds):
+            accessible.append(ds["id"])
+    return accessible
