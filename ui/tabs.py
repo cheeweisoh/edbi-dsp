@@ -20,7 +20,6 @@ def render_tabs() -> None:
         )
         cols = st.columns(4)
         for i, ds in enumerate(popular_datasets):
-            print(i, ds)
             with cols[i % 4]:
                 dataset_card(ds, "popular")
 
