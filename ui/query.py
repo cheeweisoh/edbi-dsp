@@ -1,6 +1,7 @@
 import streamlit as st
 from services.text2sql_service import text_to_sql
 from metadata.datasets import DATASETS
+from services.storage_service import con
 
 
 def render_query_data(model):
@@ -24,10 +25,18 @@ def render_query_data(model):
 
     if submit and user_input.strip():
         with st.spinner("Generating SQL..."):
-            sql = text_to_sql(user_input, DATASETS, model)
+            try:
+                sql = text_to_sql(user_input, DATASETS, model)
+                df = con.execute(sql).fetchdf()
 
-        st.session_state.ask_data_history.append({"user": user_input, "sql": sql})
+                st.session_state.ask_data_history.append(
+                    {"user": user_input, "sql": sql, "df": df}
+                )
 
-    for msg in reversed(st.session_state.ask_data_history):
-        st.markdown(f"**You:** {msg['user']}")
-        st.code(msg["sql"], language="sql")
+                if df.empty:
+                    st.info("No results returned.")
+                else:
+                    st.dataframe(df)
+
+            except Exception as e:
+                st.error(f"Error: {str(e)}")
