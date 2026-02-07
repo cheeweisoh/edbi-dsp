@@ -7,19 +7,18 @@ from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 import streamlit as st
 from dotenv import load_dotenv
 
-HF_TOKEN = os.getenv("HF_TOKEN")
-MODEL_NAME = "prem-research/prem-1B-SQL"
+MODEL_PATH = "./models/prem3Dai-1b-sql"
 FORBIDDEN_SQL_KEYWORDS = ["insert", "update", "delete", "drop", "alter", "truncate"]
 
 
 @st.cache_resource
 def load_model():
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, token=HF_TOKEN)
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, local_files_only=True)
     model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME,
+        MODEL_PATH,
         device_map="auto",
         torch_dtype="auto",
-        token=HF_TOKEN,
+        local_files_only=True,
     )
     return pipeline("text-generation", model=model, tokenizer=tokenizer)
 
