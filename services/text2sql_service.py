@@ -48,6 +48,7 @@ def build_prompt(nl_query: str, data_contract: Dict) -> str:
         - Use ONLY the table and columns provided.
         - Do NOT invent columns.
         - Do NOT use UPDATE, DELETE, INSERT, DROP, or ALTER.
+        - Do NOT join additionl tables beyond what is required.
         - Return ONLY SQL. No explanations.
 
         Schema:
