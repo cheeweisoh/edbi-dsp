@@ -19,3 +19,7 @@ def load_dataset(dataset):
     table_name = dataset["id"]
 
     return con.execute(f"SELECT * FROM {table_name}").fetchdf()
+
+
+def run_sql(sql: str) -> pd.DataFrame:
+    return con.execute(sql).fetchdf()
