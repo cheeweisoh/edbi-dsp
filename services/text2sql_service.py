@@ -1,11 +1,7 @@
-import subprocess
 import re
-import os
-import tempfile
 from typing import Dict, List
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 import streamlit as st
-from dotenv import load_dotenv
 
 MODEL_PATH = "./models/prem3Dai-1b-sql"
 FORBIDDEN_SQL_KEYWORDS = ["insert", "update", "delete", "drop", "alter", "truncate"]
