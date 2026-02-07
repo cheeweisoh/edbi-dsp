@@ -20,7 +20,7 @@ def render_query_data(model):
 
     col1, col2 = st.columns([1, 6])
     with col1:
-        submit = st.button("Generate SQL", use_container_width=True)
+        submit = st.button("Generate SQL", width="stretch")
 
     if submit and user_input.strip():
         with st.spinner("Generating SQL..."):

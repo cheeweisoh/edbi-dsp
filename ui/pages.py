@@ -61,7 +61,6 @@ def render_dataset_page():
     st.markdown(f"## {ds['title']}")
     st.markdown(ds["description"])
 
-    # ---------- Data Product Info ----------
     st.markdown("### Data Product Information")
 
     metadata_items = [
@@ -79,23 +78,19 @@ def render_dataset_page():
 
     render_metadata_grid(metadata_items, 4)
 
-    # ---------- Data Dictionary ----------
     st.markdown("### Data Dictionary")
-    st.dataframe(pd.DataFrame(ds["schema"]), hide_index=True, use_container_width=True)
+    st.dataframe(pd.DataFrame(ds["schema"]), hide_index=True, width="stretch")
 
-    # ---------- Data Preview ----------
     st.markdown("### Data Preview")
 
     df = load_dataset(ds)
 
-    # ---- Column selection ----
     st.markdown("#### Select Columns")
     all_columns = list(df.columns)
     selected_columns = st.multiselect(
         "Columns to include", all_columns, default=all_columns
     )
 
-    # ---- Filters ----
     st.markdown("#### Filters")
     filters = {}
 
@@ -141,17 +136,14 @@ def render_dataset_page():
                     key=f"filter_{col}",
                 )
 
-    # ---- Generate preview ----
     if st.button("Generate Preview"):
         filtered_df = apply_filters(df[selected_columns], filters)
         st.session_state["filtered_df"] = filtered_df
 
-    # ---- Show preview ----
     if "filtered_df" in st.session_state:
         st.markdown("#### Preview (Top 10 Rows)")
-        st.dataframe(st.session_state["filtered_df"].head(10), use_container_width=True)
+        st.dataframe(st.session_state["filtered_df"].head(10), width="stretch")
 
-        # ---------- Download ----------
         st.markdown("### Download")
 
         st.download_button(
