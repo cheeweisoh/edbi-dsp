@@ -2,6 +2,8 @@ import re
 from typing import Dict, List
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 import streamlit as st
+from services.dataset_service import DATASETS
+from services.auth_service import get_accessible_tables
 
 MODEL_PATH = "./models/prem3Dai-1b-sql"
 FORBIDDEN_SQL_KEYWORDS = ["insert", "update", "delete", "drop", "alter", "truncate"]
@@ -68,6 +70,16 @@ def is_safe_sql(sql: str) -> bool:
     return not any(keyword in sql_lower for keyword in FORBIDDEN_SQL_KEYWORDS)
 
 
+def is_allowed_sql(sql: str, accessible_tables: list[str]) -> bool:
+    tables_in_sql = re.findall(
+        r"(?:from|join)\s+([a-zA-Z0-9_]+)", sql, flags=re.IGNORECASE
+    )
+    return all(
+        table.lower() in [t.lower() for t in accessible_tables]
+        for table in tables_in_sql
+    )
+
+
 def extract_sql(sql: str) -> str:
     sql = sql.strip()
     sql = re.sub(r"^```sql", "", sql, flags=re.IGNORECASE).strip()
@@ -75,7 +87,7 @@ def extract_sql(sql: str) -> str:
     return sql
 
 
-def text_to_sql(nl_query: str, data_contract: Dict, pipe) -> str:
+def text_to_sql(nl_query: str, data_contract: Dict, pipe, user) -> str:
     prompt = build_prompt(nl_query, data_contract)
 
     result = pipe(
@@ -87,8 +99,13 @@ def text_to_sql(nl_query: str, data_contract: Dict, pipe) -> str:
     )[0]["generated_text"]
 
     sql = extract_sql(result)
+    accessible_tables = get_accessible_tables(user, DATASETS)
 
     if not is_safe_sql(sql):
         raise ValueError("Unsafe SQL generated. Query blocked.")
+    if not is_allowed_sql(sql, accessible_tables):
+        raise PermissionError(
+            "You are not allowed to access some tables in the query. Query blocked."
+        )
 
     return sql

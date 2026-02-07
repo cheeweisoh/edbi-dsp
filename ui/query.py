@@ -2,9 +2,12 @@ import streamlit as st
 from services.text2sql_service import text_to_sql
 from metadata.datasets import DATASETS
 from services.storage_service import con
+from services.auth_service import get_current_user
 
 
 def render_query_data(model):
+    user = get_current_user()
+
     st.subheader("Ask Your Data")
     st.caption(
         "Describe the data you want in natural language. We'll generate SQL for you."
@@ -26,7 +29,7 @@ def render_query_data(model):
     if submit and user_input.strip():
         with st.spinner("Generating SQL..."):
             try:
-                sql = text_to_sql(user_input, DATASETS, model)
+                sql = text_to_sql(user_input, DATASETS, model, user)
                 df = con.execute(sql).fetchdf()
 
                 st.session_state.ask_data_history.append(
