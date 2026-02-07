@@ -18,10 +18,10 @@ render_header()
 top_tabs = st.tabs(["Query Data", "All Products"])
 
 with top_tabs[0]:
+    render_query_data(model)
+
+with top_tabs[1]:
     if "selected_dataset" in st.session_state:
         render_dataset_page()
     else:
         render_tabs()
-
-with top_tabs[1]:
-    render_query_data(model)
