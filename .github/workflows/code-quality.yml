@@ -101,6 +101,7 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run CodeQL analysis
         uses: github/codeql-action/analyze@v4
