@@ -1,5 +1,3 @@
-"""Bootstrap script: creates tables, seeds users, groups, datasets and permissions."""
-
 import asyncio
 import json
 import uuid
@@ -71,11 +69,7 @@ async def _upsert_group(
 
 
 async def _ensure_member(db: AsyncSession, group_id: uuid.UUID, user_id: uuid.UUID) -> None:
-    result = await db.execute(
-        select(GroupMember).where(
-            GroupMember.group_id == group_id, GroupMember.user_id == user_id
-        )
-    )
+    result = await db.execute(select(GroupMember).where(GroupMember.group_id == group_id, GroupMember.user_id == user_id))
     if result.scalar_one_or_none() is None:
         db.add(GroupMember(group_id=group_id, user_id=user_id))
         await db.commit()
@@ -131,9 +125,7 @@ async def _seed_dataset(db: AsyncSession, meta: dict, owner_id: uuid.UUID) -> Da
     else:
         print(f"  Dataset already exists, skipping create: {name}")
 
-    result = await db.execute(
-        select(DatasetMetadata).where(DatasetMetadata.dataset_id == dataset.id)
-    )
+    result = await db.execute(select(DatasetMetadata).where(DatasetMetadata.dataset_id == dataset.id))
     dm = result.scalar_one_or_none()
     if dm is None:
         dm = DatasetMetadata(
