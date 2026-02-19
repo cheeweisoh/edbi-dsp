@@ -3,7 +3,7 @@ from services.base import APIClient
 
 class DatasetService:
     def __init__(self, client: APIClient):
-        self.client = APIClient(base_url="http://localhost:8000", api_prefix="/api/v1")
+        self.client = client
 
     def list(self):
         return self.client.get("/datasets")
