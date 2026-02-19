@@ -27,8 +27,3 @@ class DatasetService:
 
     def update_metadata(self, dataset_id: str, payload: dict):
         return self.client.put(f"/datasets/{dataset_id}/metadata", json=payload)
-
-    def query(self, dataset_id: str, limit: int | None = 10, offset: int | None = 0):
-        params = {"limit": limit, "offset": offset}
-
-        return self.client.get(f"/datasets/{dataset_id}/data", params=params)
