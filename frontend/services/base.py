@@ -7,12 +7,17 @@ class APIClient:
         self.base_url = base_url.rstrip("/")
         self.api_prefix = api_prefix.rstrip("/")
 
-    def _headers(self):
+    def _headers(self, content_type="application/json"):
+        headers = {}
         token = st.session_state.get("access_token")
-        if not token:
-            return {"Content-Type": "application/json"}
 
-        return {"Authorisation": f"Bearer {token}", "Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        if content_type:
+            headers["Content-Type"] = content_type
+
+        return headers
 
     def _build_url(self, path: str) -> str:
         return f"{self.base_url}{self.api_prefix}{path}"
@@ -23,8 +28,12 @@ class APIClient:
     def post(self, path: str, json: dict | None = None, data: dict | None = None):
         return requests.post(self._build_url(path), headers=self._headers(), json=json, data=data)
 
+    def post_form(self, path: str, data: dict):
+        print(self._build_url(path))
+        return requests.post(self._build_url(path), headers=self._headers(content_type="application/x-www-form-urlencoded"), data=data)
+
     def put(self, path: str, json: dict | None = None):
         return requests.put(self._build_url(path), headers=self._headers(), json=json)
 
     def delete(self, path: str):
-        return requests.get(self._build_url(path), headers=self._headers())
+        return requests.delete(self._build_url(path), headers=self._headers())
