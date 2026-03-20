@@ -16,7 +16,17 @@ async def _create_dataset(client: AsyncClient, name: str = "Sales Data") -> dict
 
 class TestQueryNLEndpoint:
     async def test_returns_generated_sql(self, client: AsyncClient, monkeypatch) -> None:
-        ds = await _create_dataset(client, "electricity_sales")
+        await _create_dataset(client, "electricity_sales")
+        await client.put(
+            f"{BASE}/{(await _create_dataset(client, 'water_consumption'))['id']}/metadata",
+            json={
+                "metadata_json": {
+                    "description": "Monthly water consumption",
+                    "schema": [{"column": "year", "type": "INT"}, {"column": "consumption_m3", "type": "FLOAT"}],
+                }
+            },
+        )
+        ds = await _create_dataset(client, "electricity_sales_2")
         await client.put(
             f"{BASE}/{ds['id']}/metadata",
             json={
@@ -31,7 +41,7 @@ class TestQueryNLEndpoint:
         monkeypatch.setattr(QueryNLService, "generate_sql", mocked_generate_sql)
 
         resp = await client.post(
-            f"{BASE}/{ds['id']}/querynl",
+            f"{BASE}/querynl",
             json={"nl_query": "show years", "max_new_tokens": 128},
         )
 
@@ -42,14 +52,13 @@ class TestQueryNLEndpoint:
     async def test_returns_404_when_service_raises_not_found(
         self, client: AsyncClient, monkeypatch
     ) -> None:
-        ds = await _create_dataset(client)
         monkeypatch.setattr(
             QueryNLService,
             "generate_sql",
             AsyncMock(side_effect=NotFoundError("Dataset missing")),
         )
 
-        resp = await client.post(f"{BASE}/{ds['id']}/querynl", json={"nl_query": "show years"})
+        resp = await client.post(f"{BASE}/querynl", json={"nl_query": "show years"})
 
         assert resp.status_code == 404
         assert resp.json() == {"detail": "Dataset missing"}
@@ -57,14 +66,13 @@ class TestQueryNLEndpoint:
     async def test_returns_403_when_service_raises_forbidden(
         self, client: AsyncClient, monkeypatch
     ) -> None:
-        ds = await _create_dataset(client)
         monkeypatch.setattr(
             QueryNLService,
             "generate_sql",
             AsyncMock(side_effect=ForbiddenError("Blocked")),
         )
 
-        resp = await client.post(f"{BASE}/{ds['id']}/querynl", json={"nl_query": "drop table"})
+        resp = await client.post(f"{BASE}/querynl", json={"nl_query": "drop table"})
 
         assert resp.status_code == 403
         assert resp.json() == {"detail": "Blocked"}
