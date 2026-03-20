@@ -42,7 +42,8 @@ class QueryService:
         total_row_count = len(df)
 
         sliced = df.iloc[offset : (offset + limit) if limit is not None else None]
-        rows = sliced.where(pd.notna(sliced), other=None).to_dict(orient="records")
+        normalized = sliced.astype(object).where(pd.notna(sliced), other=None)
+        rows = normalized.to_dict(orient="records")
         elapsed_ms = int((time.monotonic() - t0) * 1000)
 
         await self.log_repo.create(
