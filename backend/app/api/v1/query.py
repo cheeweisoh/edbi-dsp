@@ -31,15 +31,13 @@ async def read_dataset(
     return await svc.read_dataset(dataset_id, current_user, limit=limit, offset=offset)
 
 
-@router.post("/{dataset_id}/querynl", response_model=QueryNLResponse)
+@router.post("/querynl", response_model=QueryNLResponse)
 async def query_nl(
-    dataset_id: uuid.UUID,
     data: QueryNLRequest,
     current_user: User = Depends(get_current_user),
     svc: QueryNLService = Depends(_querynl_svc),
 ) -> QueryNLResponse:
     sql = await svc.generate_sql(
-        dataset_id,
         data.nl_query,
         current_user,
         max_new_tokens=data.max_new_tokens,
