@@ -1,3 +1,4 @@
+import pandas as pd
 import streamlit as st
 from services.query_service import QueryService
 
@@ -15,9 +16,7 @@ def render_query_data():
         height=120,
     )
 
-    col1, col2 = st.columns([1, 6])
-    with col1:
-        submit = st.button("Generate SQL", width="stretch")
+    submit = st.button("Generate SQL", width="stretch")
 
     if submit and user_input.strip():
         with st.spinner("Generating SQL..."):
@@ -28,17 +27,21 @@ def render_query_data():
                     st.error(f"Error: {detail}")
                     return
                 sql = response.json().get("sql", "")
-                st.text(sql)
-            #             df = con.execute(sql).fetchdf()
-            #
-            #             st.session_state.ask_data_history.append(
-            #                 {"user": user_input, "sql": sql, "df": df}
-            #             )
-            #
-            #             if df.empty:
-            #                 st.info("No results returned.")
-            #             else:
-            #                 st.dataframe(df)
-            #
+                # st.markdown("#### Generated SQL")
+                # st.code(sql, language="sql")
+
+                query_response = query_service.query_sql(sql)
+                if query_response.status_code != 200:
+                    detail = query_response.json().get("detail", query_response.text)
+                    st.error(f"Error: {detail}")
+                    return
+
+                result = query_response.json()
+                df = pd.DataFrame(result.get("rows", []), columns=result.get("columns", []))
+                st.markdown("#### Query Result")
+                if df.empty:
+                    st.info("No results returned.")
+                else:
+                    st.dataframe(df, width="stretch")
             except Exception as e:
                 st.error(f"Error: {str(e)}")

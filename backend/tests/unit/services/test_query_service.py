@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pandas as pd
 import pytest
 
-from app.exceptions import NotFoundError
+from app.exceptions import ForbiddenError, NotFoundError
+from app.models.dataset import Dataset
 from app.models.dataset_metadata import DatasetMetadata
 from app.models.user import User
 from app.services.query_service import QueryService
@@ -83,3 +84,58 @@ class TestReadDataset:
         assert result.rows[0]["month"] == 2
         assert result.rows[0]["value"] is None
         svc.log_repo.create.assert_awaited_once()
+
+
+class TestExecuteSql:
+    async def test_executes_sql_and_logs_query(
+        self, svc: QueryService, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        user = _make_user()
+        dataset_id = uuid.uuid4()
+        dataset = Dataset(
+            id=dataset_id,
+            name="electricity_sales",
+            description="desc",
+            owner_id=user.id,
+            is_active=True,
+        )
+        metadata = DatasetMetadata(dataset_id=dataset_id, file_path="data/electricity_sales.csv")
+        svc.dataset_repo.list_accessible = AsyncMock(return_value=[dataset])
+        svc.dataset_repo.get_metadata = AsyncMock(return_value=metadata)
+        svc.perm_svc.get_accessible_dataset_ids = AsyncMock(return_value={dataset_id})
+        monkeypatch.setattr(Path, "exists", lambda self: True)
+        monkeypatch.setattr(
+            "app.services.query_service.pd.read_csv",
+            lambda path: pd.DataFrame([{"year": 2024, "month": 1}, {"year": 2024, "month": 2}]),
+        )
+
+        result = await svc.execute_sql("SELECT year, month FROM electricity_sales", user, limit=1, offset=1)
+
+        assert result.columns == ["year", "month"]
+        assert result.row_count == 1
+        assert result.rows == [{"year": 2024, "month": 2}]
+        svc.log_repo.create.assert_awaited_once()
+
+    async def test_blocks_unsafe_sql(self, svc: QueryService) -> None:
+        user = _make_user()
+
+        with pytest.raises(ForbiddenError):
+            await svc.execute_sql("DROP TABLE electricity_sales", user)
+
+    async def test_blocks_unallowed_tables(self, svc: QueryService) -> None:
+        user = _make_user()
+        dataset_id = uuid.uuid4()
+        dataset = Dataset(
+            id=dataset_id,
+            name="electricity_sales",
+            description="desc",
+            owner_id=user.id,
+            is_active=True,
+        )
+        metadata = DatasetMetadata(dataset_id=dataset_id, file_path="data/electricity_sales.csv")
+        svc.dataset_repo.list_accessible = AsyncMock(return_value=[dataset])
+        svc.dataset_repo.get_metadata = AsyncMock(return_value=metadata)
+        svc.perm_svc.get_accessible_dataset_ids = AsyncMock(return_value={dataset_id})
+
+        with pytest.raises(ForbiddenError):
+            await svc.execute_sql("SELECT * FROM water_consumption", user)

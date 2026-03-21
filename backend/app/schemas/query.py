@@ -12,10 +12,22 @@ class DataQueryResponse(BaseModel):
     total_row_count: int
 
 
-class QueryNLRequest(BaseModel):
+class GenSQLRequest(BaseModel):
     nl_query: str
     max_new_tokens: int = 500
 
 
-class QueryNLResponse(BaseModel):
+class GenSQLResponse(BaseModel):
     sql: str
+
+
+class SQLQueryRequest(BaseModel):
+    sql: str
+    limit: int | None = 500
+    offset: int = 0
+
+
+class SQLQueryResponse(BaseModel):
+    columns: list[str]
+    rows: list[dict]
+    row_count: int

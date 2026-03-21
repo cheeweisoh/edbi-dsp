@@ -1,9 +1,9 @@
 from unittest.mock import AsyncMock
 
-from httpx import AsyncClient
-
 from app.exceptions import ForbiddenError, NotFoundError
-from app.services.querynl_service import QueryNLService
+from app.services.gensql_service import GenSQLService
+from app.services.query_service import QueryService
+from httpx import AsyncClient
 
 BASE = "/api/v1/datasets"
 
@@ -14,7 +14,7 @@ async def _create_dataset(client: AsyncClient, name: str = "Sales Data") -> dict
     return resp.json()
 
 
-class TestQueryNLEndpoint:
+class TestGenSQL:
     async def test_returns_generated_sql(self, client: AsyncClient, monkeypatch) -> None:
         await _create_dataset(client, "electricity_sales")
         await client.put(
@@ -38,10 +38,10 @@ class TestQueryNLEndpoint:
         )
 
         mocked_generate_sql = AsyncMock(return_value="SELECT year FROM electricity_sales")
-        monkeypatch.setattr(QueryNLService, "generate_sql", mocked_generate_sql)
+        monkeypatch.setattr(GenSQLService, "generate_sql", mocked_generate_sql)
 
         resp = await client.post(
-            f"{BASE}/querynl",
+            f"{BASE}/gensql",
             json={"nl_query": "show years", "max_new_tokens": 128},
         )
 
@@ -49,30 +49,51 @@ class TestQueryNLEndpoint:
         assert resp.json() == {"sql": "SELECT year FROM electricity_sales"}
         mocked_generate_sql.assert_awaited_once()
 
-    async def test_returns_404_when_service_raises_not_found(
-        self, client: AsyncClient, monkeypatch
-    ) -> None:
+    async def test_returns_404_when_service_raises_not_found(self, client: AsyncClient, monkeypatch) -> None:
         monkeypatch.setattr(
-            QueryNLService,
+            GenSQLService,
             "generate_sql",
             AsyncMock(side_effect=NotFoundError("Dataset missing")),
         )
 
-        resp = await client.post(f"{BASE}/querynl", json={"nl_query": "show years"})
+        resp = await client.post(f"{BASE}/gensql", json={"nl_query": "show years"})
 
         assert resp.status_code == 404
         assert resp.json() == {"detail": "Dataset missing"}
 
-    async def test_returns_403_when_service_raises_forbidden(
-        self, client: AsyncClient, monkeypatch
-    ) -> None:
+    async def test_returns_403_when_service_raises_forbidden(self, client: AsyncClient, monkeypatch) -> None:
         monkeypatch.setattr(
-            QueryNLService,
+            GenSQLService,
             "generate_sql",
             AsyncMock(side_effect=ForbiddenError("Blocked")),
         )
 
-        resp = await client.post(f"{BASE}/querynl", json={"nl_query": "drop table"})
+        resp = await client.post(f"{BASE}/gensql", json={"nl_query": "drop table"})
+
+        assert resp.status_code == 403
+        assert resp.json() == {"detail": "Blocked"}
+
+
+class TestQuerySQLEndpoint:
+    async def test_returns_sql_query_result(self, client: AsyncClient, monkeypatch) -> None:
+        monkeypatch.setattr(
+            QueryService,
+            "execute_sql",
+            AsyncMock(return_value={"columns": ["year"], "rows": [{"year": 2024}], "row_count": 1}),
+        )
+
+        resp = await client.post(f"{BASE}/query", json={"sql": "SELECT year FROM electricity_sales"})
+
+        assert resp.status_code == 200
+        assert resp.json() == {"columns": ["year"], "rows": [{"year": 2024}], "row_count": 1}
+
+    async def test_returns_403_when_sql_service_raises_forbidden(self, client: AsyncClient, monkeypatch) -> None:
+        monkeypatch.setattr(
+            QueryService,
+            "execute_sql",
+            AsyncMock(side_effect=ForbiddenError("Blocked")),
+        )
+        resp = await client.post(f"{BASE}/query", json={"sql": "DROP TABLE electricity_sales"})
 
         assert resp.status_code == 403
         assert resp.json() == {"detail": "Blocked"}

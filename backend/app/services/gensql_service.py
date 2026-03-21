@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 FORBIDDEN_SQL_KEYWORDS = ["insert", "update", "delete", "drop", "alter", "truncate"]
 
 
-class QueryNLService:
+class GenSQLService:
     def __init__(self, db: AsyncSession) -> None:
         self.dataset_repo = DatasetRepository(db)
         self.perm_svc = PermissionService(db)
