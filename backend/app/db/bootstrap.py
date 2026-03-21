@@ -13,7 +13,7 @@ from app.models.dataset_permission import DatasetPermission
 from app.models.group import Group
 from app.models.group_member import GroupMember
 from app.models.user import User
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
@@ -77,6 +77,16 @@ async def _ensure_member(db: AsyncSession, group_id: uuid.UUID, user_id: uuid.UU
         db.add(GroupMember(group_id=group_id, user_id=user_id))
         await db.commit()
         print(f"  Added user {user_id} to group {group_id}")
+
+
+async def _keep_only_group(db: AsyncSession, keep_group_id: uuid.UUID) -> None:
+    count_stmt = select(func.count(Group.id)).where(Group.id != keep_group_id)
+    groups_to_remove = await db.scalar(count_stmt)
+    stmt = delete(Group).where(Group.id != keep_group_id)
+    await db.execute(stmt)
+    await db.commit()
+    if groups_to_remove:
+        print(f"  Removed {groups_to_remove} non-bootstrap group(s)")
 
 
 async def _ensure_permission(
@@ -171,11 +181,11 @@ async def bootstrap_db() -> None:
             full_name="System Admin",
             is_superuser=True,
         )
-        analyst = await _upsert_user(
+        user = await _upsert_user(
             db,
             email=settings.BOOTSTRAP_USER2_EMAIL,
             password=settings.BOOTSTRAP_USER2_PASSWORD,
-            full_name="Data Analyst",
+            full_name="User",
             is_superuser=False,
         )
 
@@ -196,7 +206,8 @@ async def bootstrap_db() -> None:
             description="Users who can view and query the electricity sales dataset",
             created_by=admin.id,
         )
-        await _ensure_member(db, analyst_group.id, analyst.id)
+        await _ensure_member(db, analyst_group.id, user.id)
+        await _keep_only_group(db, analyst_group.id)
 
         # Grant query access on electricity_sales only
         if "electricity_sales" in datasets:
@@ -211,7 +222,7 @@ async def bootstrap_db() -> None:
 
     print("\nBootstrap complete.")
     print(f"  Admin:   {settings.BOOTSTRAP_USER_EMAIL} / {settings.BOOTSTRAP_USER_PASSWORD}")
-    print(f"  Analyst: {settings.BOOTSTRAP_USER2_EMAIL} / {settings.BOOTSTRAP_USER2_PASSWORD}")
+    print(f"  User:    {settings.BOOTSTRAP_USER2_EMAIL} / {settings.BOOTSTRAP_USER2_PASSWORD}")
 
 
 if __name__ == "__main__":

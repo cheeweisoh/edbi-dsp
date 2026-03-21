@@ -20,8 +20,10 @@ class GroupService:
             created_by=current_user.id,
         )
 
-    async def list_groups(self) -> list[Group]:
-        return await self.repo.list_all()
+    async def list_groups(self, current_user: User) -> list[Group]:
+        if current_user.is_superuser:
+            return await self.repo.list_all()
+        return await self.repo.list_for_user(current_user.id)
 
     async def get_group(self, group_id: uuid.UUID) -> Group:
         group = await self.repo.get_by_id(group_id)
@@ -51,4 +53,4 @@ class GroupService:
     @staticmethod
     def _assert_group_admin(group: Group, user: User) -> None:
         if group.created_by != user.id and not user.is_superuser:
-            raise ForbiddenError("Only the group creator or a superuser can manage members")
+            raise ForbiddenError("Only the group owner or a superuser can manage members")

@@ -26,6 +26,15 @@ class GroupRepository:
         result = await self.db.execute(select(Group))
         return list(result.scalars().all())
 
+    async def list_for_user(self, user_id: uuid.UUID) -> list[Group]:
+        member_group_ids = select(GroupMember.group_id).where(GroupMember.user_id == user_id)
+        result = await self.db.execute(
+            select(Group).where(
+                (Group.created_by == user_id) | (Group.id.in_(member_group_ids))
+            )
+        )
+        return list(result.scalars().all())
+
     async def get_user_group_ids(self, user_id: uuid.UUID) -> list[uuid.UUID]:
         result = await self.db.execute(
             select(GroupMember.group_id).where(GroupMember.user_id == user_id)

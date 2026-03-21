@@ -35,16 +35,15 @@ def manage_groups_dialog() -> None:
 
     all_groups = groups_res.json()
     all_users = users_res.json()
-    owned_groups = [group for group in all_groups if str(group.get("created_by")) == current_user_id]
-
-    st.caption("Create and manage groups you own. Add or remove members from your groups.")
-    st.markdown("### Your Groups")
-    if not owned_groups:
-        st.info("You do not own any groups yet. Create your first group below.")
+    st.caption("Only group owners can manage members in the UI right now.")
+    st.markdown("### Groups")
 
     owner_map = {str(user["id"]): user for user in all_users}
-    for group in owned_groups:
+    for group in all_groups:
         with st.expander(group["name"], expanded=False):
+            if str(group.get("created_by")) != current_user_id:
+                continue
+
             if group.get("description"):
                 st.caption(group["description"])
             created_by = owner_map.get(str(group["created_by"]), {})

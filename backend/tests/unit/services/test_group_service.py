@@ -52,6 +52,27 @@ class TestCreateAndGetGroup:
         with pytest.raises(NotFoundError):
             await svc.get_group(uuid.uuid4())
 
+    async def test_list_groups_for_regular_user(self, svc: GroupService) -> None:
+        user = _make_user()
+        groups = [_make_group(created_by=uuid.uuid4())]
+        svc.repo.list_for_user = AsyncMock(return_value=groups)
+
+        result = await svc.list_groups(user)
+
+        assert result == groups
+        svc.repo.list_for_user.assert_awaited_once_with(user.id)
+        svc.repo.list_all.assert_not_called()
+
+    async def test_list_groups_for_superuser(self, svc: GroupService) -> None:
+        admin = _make_user(is_superuser=True)
+        groups = [_make_group(created_by=uuid.uuid4())]
+        svc.repo.list_all = AsyncMock(return_value=groups)
+
+        result = await svc.list_groups(admin)
+
+        assert result == groups
+        svc.repo.list_all.assert_awaited_once()
+
 
 class TestMembers:
     async def test_add_member_success(self, svc: GroupService) -> None:
@@ -64,6 +85,20 @@ class TestMembers:
         svc.repo.add_member = AsyncMock(return_value=member)
 
         result = await svc.add_member(group.id, member_user_id, owner)
+
+        assert result == member
+
+    async def test_add_member_success_for_superuser(self, svc: GroupService) -> None:
+        owner = _make_user()
+        superuser = _make_user(id=uuid.uuid4(), email="admin@example.com", is_superuser=True)
+        member_user_id = uuid.uuid4()
+        group = _make_group(created_by=owner.id)
+        member = GroupMember(group_id=group.id, user_id=member_user_id)
+        svc.repo.get_by_id = AsyncMock(return_value=group)
+        svc.repo.get_member = AsyncMock(return_value=None)
+        svc.repo.add_member = AsyncMock(return_value=member)
+
+        result = await svc.add_member(group.id, member_user_id, superuser)
 
         assert result == member
 
@@ -86,6 +121,20 @@ class TestMembers:
 
         with pytest.raises(ForbiddenError):
             await svc.add_member(group.id, uuid.uuid4(), other)
+
+    async def test_remove_member_success_for_superuser(self, svc: GroupService) -> None:
+        owner = _make_user()
+        superuser = _make_user(id=uuid.uuid4(), email="admin@example.com", is_superuser=True)
+        member_user_id = uuid.uuid4()
+        group = _make_group(created_by=owner.id)
+        member = GroupMember(group_id=group.id, user_id=member_user_id)
+        svc.repo.get_by_id = AsyncMock(return_value=group)
+        svc.repo.get_member = AsyncMock(return_value=member)
+        svc.repo.remove_member = AsyncMock()
+
+        await svc.remove_member(group.id, member_user_id, superuser)
+
+        svc.repo.remove_member.assert_awaited_once_with(member)
 
     async def test_remove_member_not_found(self, svc: GroupService) -> None:
         owner = _make_user()

@@ -20,8 +20,8 @@ async def create_group(data: GroupCreate, current_user: User = Depends(get_curre
 
 
 @router.get("/", response_model=list[GroupResponse])
-async def list_groups(_: User = Depends(get_current_user), svc: GroupService = Depends(_svc)) -> list[GroupResponse]:
-    return await svc.list_groups()
+async def list_groups(current_user: User = Depends(get_current_user), svc: GroupService = Depends(_svc)) -> list[GroupResponse]:
+    return await svc.list_groups(current_user)
 
 
 @router.get("/{group_id}", response_model=GroupResponse)
