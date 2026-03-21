@@ -5,7 +5,6 @@ from services.query_service import QueryService
 
 def render_query_data():
     query_service = QueryService(st.session_state.client)
-    # user = get_current_user()
 
     if "ask_data_history" not in st.session_state:
         st.session_state.ask_data_history = []
@@ -39,9 +38,9 @@ def render_query_data():
                 result = query_response.json()
                 df = pd.DataFrame(result.get("rows", []), columns=result.get("columns", []))
                 st.markdown("#### Query Result")
-                if df.empty:
-                    st.info("No results returned.")
+                if not df.empty:
+                    st.dataframe(df, width="stretch", hide_index=True)
                 else:
-                    st.dataframe(df, width="stretch")
+                    st.info("No results returned.")
             except Exception as e:
                 st.error(f"Error: {str(e)}")
