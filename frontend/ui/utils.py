@@ -3,6 +3,20 @@ import binascii
 import json
 
 import streamlit as st
+from services.group_service import GroupService
+
+
+def _build_group_member_lookup(groups: list[dict], all_users: list[dict], group_service: GroupService) -> tuple[dict[str, list[dict]], dict[str, dict]]:
+    users_by_id = {str(user["id"]): user for user in all_users}
+    members_by_group_id: dict[str, list[dict]] = {}
+    group_by_id = {str(group["id"]): group for group in groups}
+    for group in groups:
+        members_res = group_service.list_members(group["id"])
+        if members_res.status_code != 200:
+            continue
+        members = members_res.json()
+        members_by_group_id[str(group["id"])] = [users_by_id[str(member["user_id"])] for member in members if str(member["user_id"]) in users_by_id]
+    return members_by_group_id, group_by_id
 
 
 def _extract_current_user_id_from_token() -> str | None:
