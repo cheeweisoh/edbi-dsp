@@ -6,3 +6,4 @@ models/*
 /frontend/streamlit.log
 /backend/uvicorn.log
 /backend/edbi_dsp.db
+ollama.log
