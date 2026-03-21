@@ -56,7 +56,6 @@ class PermissionRepository:
             )
         )
         ids: set[uuid.UUID] = set(result.scalars().all())
-
         if group_ids:
             result = await self.db.execute(
                 select(DatasetPermission.dataset_id).where(

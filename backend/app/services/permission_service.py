@@ -6,6 +6,7 @@ from app.models.user import User
 from app.repositories.dataset_repo import DatasetRepository
 from app.repositories.group_repo import GroupRepository
 from app.repositories.permission_repo import PermissionRepository
+from app.repositories.user_repo import UserRepository
 from app.schemas.permission import PermissionGrant
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,6 +15,7 @@ class PermissionService:
     def __init__(self, db: AsyncSession) -> None:
         self.dataset_repo = DatasetRepository(db)
         self.group_repo = GroupRepository(db)
+        self.user_repo = UserRepository(db)
         self.perm_repo = PermissionRepository(db)
 
     async def grant(self, dataset_id: uuid.UUID, data: PermissionGrant, current_user: User) -> DatasetPermission:
@@ -21,6 +23,14 @@ class PermissionService:
         if dataset is None or not dataset.is_active:
             raise NotFoundError(f"Dataset {dataset_id} not found")
         self._assert_owner_or_superuser(dataset, current_user)
+        if data.grantee_type == "group":
+            if await self.group_repo.get_by_id(data.grantee_id) is None:
+                raise NotFoundError(f"Group {data.grantee_id} not found")
+        elif data.grantee_type == "user":
+            if await self.user_repo.get_by_id(data.grantee_id) is None:
+                raise NotFoundError(f"User {data.grantee_id} not found")
+        else:
+            raise ForbiddenError("Unsupported grantee type for dataset access management")
         return await self.perm_repo.grant(
             dataset_id=dataset_id,
             grantee_type=data.grantee_type,

@@ -39,36 +39,82 @@ def svc() -> PermissionService:
     service = PermissionService(MagicMock())
     service.dataset_repo = MagicMock()
     service.group_repo = MagicMock()
+    service.user_repo = MagicMock()
     service.perm_repo = MagicMock()
     return service
 
 
 class TestGrantAndRevoke:
-    async def test_grant_success(self, svc: PermissionService) -> None:
+    async def test_grant_success_for_group(self, svc: PermissionService) -> None:
         owner = _make_user()
         dataset = _make_dataset(owner_id=owner.id)
-        grant_data = PermissionGrant(grantee_type="user", grantee_id=uuid.uuid4(), permission="query")
+        group_id = uuid.uuid4()
+        grant_data = PermissionGrant(grantee_type="group", grantee_id=group_id, permission="query")
         permission = DatasetPermission(
             dataset_id=dataset.id,
-            grantee_type="user",
-            grantee_id=grant_data.grantee_id,
+            grantee_type="group",
+            grantee_id=group_id,
             permission="query",
             granted_by=owner.id,
         )
         svc.dataset_repo.get_by_id = AsyncMock(return_value=dataset)
+        svc.group_repo.get_by_id = AsyncMock(return_value=MagicMock(id=group_id))
         svc.perm_repo.grant = AsyncMock(return_value=permission)
 
         result = await svc.grant(dataset.id, grant_data, owner)
 
         assert result == permission
+        svc.group_repo.get_by_id.assert_awaited_once_with(group_id)
+
+    async def test_grant_success_for_user(self, svc: PermissionService) -> None:
+        owner = _make_user()
+        dataset = _make_dataset(owner_id=owner.id)
+        target_user = _make_user(id=uuid.uuid4(), email="target@example.com")
+        grant_data = PermissionGrant(grantee_type="user", grantee_id=target_user.id, permission="query")
+        permission = DatasetPermission(
+            dataset_id=dataset.id,
+            grantee_type="user",
+            grantee_id=target_user.id,
+            permission="query",
+            granted_by=owner.id,
+        )
+        svc.dataset_repo.get_by_id = AsyncMock(return_value=dataset)
+        svc.user_repo.get_by_id = AsyncMock(return_value=target_user)
+        svc.perm_repo.grant = AsyncMock(return_value=permission)
+
+        result = await svc.grant(dataset.id, grant_data, owner)
+
+        assert result == permission
+        svc.user_repo.get_by_id.assert_awaited_once_with(target_user.id)
 
     async def test_grant_not_found_for_missing_dataset(self, svc: PermissionService) -> None:
         owner = _make_user()
         svc.dataset_repo.get_by_id = AsyncMock(return_value=None)
-        data = PermissionGrant(grantee_type="user", grantee_id=uuid.uuid4(), permission="view")
+        data = PermissionGrant(grantee_type="group", grantee_id=uuid.uuid4(), permission="view")
 
         with pytest.raises(NotFoundError):
             await svc.grant(uuid.uuid4(), data, owner)
+
+    async def test_grant_not_found_for_missing_user(self, svc: PermissionService) -> None:
+        owner = _make_user()
+        dataset = _make_dataset(owner_id=owner.id)
+        svc.dataset_repo.get_by_id = AsyncMock(return_value=dataset)
+        svc.user_repo.get_by_id = AsyncMock(return_value=None)
+        data = PermissionGrant(grantee_type="user", grantee_id=uuid.uuid4(), permission="query")
+
+        with pytest.raises(NotFoundError):
+            await svc.grant(dataset.id, data, owner)
+
+    async def test_grant_not_found_for_missing_group(self, svc: PermissionService) -> None:
+        owner = _make_user()
+        dataset = _make_dataset(owner_id=owner.id)
+        group_id = uuid.uuid4()
+        svc.dataset_repo.get_by_id = AsyncMock(return_value=dataset)
+        svc.group_repo.get_by_id = AsyncMock(return_value=None)
+        data = PermissionGrant(grantee_type="group", grantee_id=group_id, permission="query")
+
+        with pytest.raises(NotFoundError):
+            await svc.grant(dataset.id, data, owner)
 
     async def test_revoke_not_found_for_wrong_permission_dataset(self, svc: PermissionService) -> None:
         owner = _make_user()
