@@ -9,3 +9,7 @@ class QueryService:
         params = {"limit": limit, "offset": offset}
 
         return self.client.get(f"/datasets/{dataset_id}/data", params=params)
+
+    def query_nl(self, nl_query: str, max_tokens: int = 500):
+        payload = {"nl_query": nl_query, "max_new_tokens": max_tokens}
+        return self.client.post("/datasets/querynl", json=payload)

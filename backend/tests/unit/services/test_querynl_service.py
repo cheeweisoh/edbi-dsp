@@ -80,11 +80,7 @@ class TestGenerateSql:
         svc.perm_svc.get_accessible_dataset_ids = AsyncMock(return_value={dataset.id})
         svc.dataset_repo.get_metadata = AsyncMock(return_value=metadata)
 
-        monkeypatch.setattr(
-            QueryNLService,
-            "_get_pipe",
-            classmethod(lambda cls: lambda *args, **kwargs: [{"generated_text": "SELECT year FROM electricity_sales"}]),
-        )
+        monkeypatch.setattr(QueryNLService, "_generate_with_ollama", staticmethod(lambda *_: "SELECT year FROM electricity_sales"))
 
         sql = await svc.generate_sql("show years", user)
 
@@ -112,11 +108,7 @@ class TestGenerateSql:
                 metadata_json={"description": "x", "schema": [{"column": "year", "type": "INT"}]},
             )
         )
-        monkeypatch.setattr(
-            QueryNLService,
-            "_get_pipe",
-            classmethod(lambda cls: lambda *args, **kwargs: [{"generated_text": "SELECT year FROM electricity_sales"}]),
-        )
+        monkeypatch.setattr(QueryNLService, "_generate_with_ollama", staticmethod(lambda *_: "SELECT year FROM electricity_sales"))
 
         sql = await svc.generate_sql("q", user)
 
@@ -135,11 +127,7 @@ class TestGenerateSql:
         svc.dataset_repo.list_accessible = AsyncMock(return_value=[dataset])
         svc.perm_svc.get_accessible_dataset_ids = AsyncMock(return_value={dataset.id})
         svc.dataset_repo.get_metadata = AsyncMock(return_value=metadata)
-        monkeypatch.setattr(
-            QueryNLService,
-            "_get_pipe",
-            classmethod(lambda cls: lambda *args, **kwargs: [{"generated_text": "DROP TABLE electricity_sales"}]),
-        )
+        monkeypatch.setattr(QueryNLService, "_generate_with_ollama", staticmethod(lambda *_: "DROP TABLE electricity_sales"))
 
         with pytest.raises(ForbiddenError):
             await svc.generate_sql("drop it", user)
@@ -156,11 +144,7 @@ class TestGenerateSql:
         svc.dataset_repo.list_accessible = AsyncMock(return_value=[dataset])
         svc.perm_svc.get_accessible_dataset_ids = AsyncMock(return_value={dataset.id})
         svc.dataset_repo.get_metadata = AsyncMock(return_value=metadata)
-        monkeypatch.setattr(
-            QueryNLService,
-            "_get_pipe",
-            classmethod(lambda cls: lambda *args, **kwargs: [{"generated_text": "SELECT * FROM water_consumption"}]),
-        )
+        monkeypatch.setattr(QueryNLService, "_generate_with_ollama", staticmethod(lambda *_: "SELECT * FROM water_consumption"))
 
         with pytest.raises(ForbiddenError):
             await svc.generate_sql("show all", user)

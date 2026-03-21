@@ -29,7 +29,6 @@ class APIClient:
         return requests.post(self._build_url(path), headers=self._headers(), json=json, data=data)
 
     def post_form(self, path: str, data: dict):
-        print(self._build_url(path))
         return requests.post(self._build_url(path), headers=self._headers(content_type="application/x-www-form-urlencoded"), data=data)
 
     def put(self, path: str, json: dict | None = None):

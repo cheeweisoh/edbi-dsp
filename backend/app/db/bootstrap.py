@@ -63,6 +63,10 @@ async def _upsert_group(
         await db.refresh(group)
         print(f"  Created group: {name}")
     else:
+        if group.created_by != created_by:
+            group.created_by = created_by
+            await db.commit()
+            await db.refresh(group)
         print(f"  Group already exists: {name}")
     return group
 

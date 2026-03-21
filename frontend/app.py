@@ -1,27 +1,34 @@
+import os
+
 import streamlit as st
 from services.base import APIClient
-from services.auth_service import AuthService
+from ui.dataset_page import render_dataset_page
+from ui.layout import render_header, render_tabs
+from ui.public import render_public_view
 
 
 def main() -> None:
-    client = APIClient(base_url="http://localhost:8000", api_prefix="/api/v1")
-
-    auth_service = AuthService(client)
-
-    if "page" not in st.session_state:
-        st.session_state.page = "public"
+    if "active_dialog" not in st.session_state:
+        st.session_state.active_dialog = None
 
     st.set_page_config(page_title="Data Sharing Platform", layout="wide")
 
-    if st.session_state.page == "public":
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
+    if "client" not in st.session_state:
+        st.session_state.client = APIClient(base_url=os.getenv("API_BASE_URL", "http://localhost:8000"), api_prefix="/api/v1")
+    if "page" not in st.session_state:
+        st.session_state.page = "public"
+    if "is_authenticated" not in st.session_state:
+        st.session_state.is_authenticated = False
 
-        if st.button("Login"):
-            if auth_service.login(username, password):
-                st.success("Logged in!")
-            else:
-                st.error("Invalid credentials")
+    if st.session_state.is_authenticated:
+        render_header()
+
+        if "selected_dataset" in st.session_state:
+            render_dataset_page()
+        else:
+            render_tabs()
+    else:
+        render_public_view()
 
 
 if __name__ == "__main__":

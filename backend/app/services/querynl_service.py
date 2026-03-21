@@ -1,7 +1,8 @@
 import re
-from pathlib import Path
 from typing import Any
 
+import requests
+from app.core.config import settings
 from app.exceptions import AppError, ForbiddenError, NotFoundError
 from app.models.user import User
 from app.repositories.dataset_repo import DatasetRepository
@@ -12,32 +13,16 @@ FORBIDDEN_SQL_KEYWORDS = ["insert", "update", "delete", "drop", "alter", "trunca
 
 
 class QueryNLService:
-    _pipe: Any = None
-    _model_path = str(Path(__file__).resolve().parents[3] / "models" / "prem3Dai-1b-sql")
-
     def __init__(self, db: AsyncSession) -> None:
         self.dataset_repo = DatasetRepository(db)
         self.perm_svc = PermissionService(db)
 
-    async def generate_sql(
-        self,
-        nl_query: str,
-        current_user: User,
-        max_new_tokens: int = 200,
-    ) -> str:
+    async def generate_sql(self, nl_query: str, current_user: User, max_new_tokens: int = 200) -> str:
         datasets = await self._list_queryable_datasets(current_user)
         schema_context = self._build_schema_context(datasets)
         prompt = self._build_prompt(nl_query, schema_context)
 
-        raw_output = self._get_pipe()(
-            prompt,
-            max_new_tokens=max_new_tokens,
-            temperature=0.0,
-            do_sample=False,
-            return_full_text=False,
-        )[
-            0
-        ]["generated_text"]
+        raw_output = self._generate_with_ollama(prompt, max_new_tokens)
 
         sql = self._extract_sql(raw_output)
         if not self._is_safe_sql(sql):
@@ -46,30 +31,46 @@ class QueryNLService:
             raise ForbiddenError("You are not allowed to access some tables in the query. Query blocked.")
         return sql
 
-    @classmethod
-    def _get_pipe(cls) -> Any:
-        if cls._pipe is not None:
-            return cls._pipe
+    @staticmethod
+    def _generate_with_ollama(prompt: str, max_new_tokens: int) -> str:
+        base_url = settings.OLLAMA_BASE_URL.rstrip("/")
+        endpoint = f"{base_url}/api/generate"
+        payload = {
+            "model": settings.OLLAMA_MODEL,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "temperature": 0,
+                "num_predict": max_new_tokens,
+            },
+        }
+        try:
+            response = requests.post(
+                endpoint,
+                json=payload,
+                timeout=settings.OLLAMA_TIMEOUT_SECONDS,
+            )
+        except requests.RequestException as exc:
+            raise AppError(f"Failed to reach Ollama at {base_url}", 500) from exc
 
-        model_path = Path(cls._model_path)
-        if not model_path.exists():
-            raise NotFoundError(f"Text-to-SQL model not found at: {cls._model_path}")
+        if response.status_code != 200:
+            detail = response.text
+            try:
+                body = response.json()
+                detail = body.get("error", detail)
+            except ValueError:
+                pass
+            raise AppError(f"Ollama generation failed: {detail}", 500)
 
         try:
-            from transformers import (AutoModelForCausalLM, AutoTokenizer,
-                                      pipeline)
-        except ImportError as exc:
-            raise AppError("transformers dependency is not installed", 500) from exc
+            body = response.json()
+        except ValueError as exc:
+            raise AppError("Invalid JSON response from Ollama", 500) from exc
 
-        tokenizer = AutoTokenizer.from_pretrained(cls._model_path, local_files_only=True)
-        model = AutoModelForCausalLM.from_pretrained(
-            cls._model_path,
-            device_map="auto",
-            torch_dtype="auto",
-            local_files_only=True,
-        )
-        cls._pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
-        return cls._pipe
+        generated = body.get("response")
+        if not isinstance(generated, str) or not generated.strip():
+            raise AppError("Ollama returned empty generation output", 500)
+        return generated
 
     @staticmethod
     def _build_schema_context(datasets: list[dict[str, Any]]) -> str:
@@ -103,6 +104,8 @@ class QueryNLService:
         - Do NOT use UPDATE, DELETE, INSERT, DROP, or ALTER.
         - Return ONLY SQL. No explanations.
 
+        If there are no available tables for the user to query, return the statement: "null" instead
+
         Schema:
         {schema_context}
 
@@ -118,30 +121,7 @@ class QueryNLService:
         cleaned = sql.strip()
         cleaned = re.sub(r"^```sql", "", cleaned, flags=re.IGNORECASE).strip()
         cleaned = re.sub(r"```$", "", cleaned).strip()
-        cleaned = cleaned.replace("Ġ", " ")
-        keywords = [
-            "SELECT",
-            "FROM",
-            "WHERE",
-            "JOIN",
-            "LEFT JOIN",
-            "RIGHT JOIN",
-            "INNER JOIN",
-            "OUTER JOIN",
-            "GROUP BY",
-            "ORDER BY",
-            "HAVING",
-            "LIMIT",
-            "OFFSET",
-        ]
-        for keyword in sorted(keywords, key=len, reverse=True):
-            pattern = keyword.replace(" ", r"\s+")
-            cleaned = re.sub(rf"(?i)(?<!\s)({pattern})", r" \1", cleaned)
-            cleaned = re.sub(rf"(?i)({pattern})(?!\s|$|[(),;])", r"\1 ", cleaned)
-        for keyword in ["AND", "OR", "ON"]:
-            cleaned = re.sub(rf"(?<!\s)({keyword})(?=[A-Za-z_])", r" \1", cleaned)
-            cleaned = re.sub(rf"({keyword})(?=[A-Za-z_])(?!\s)", r"\1 ", cleaned)
-        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+
         return cleaned
 
     @staticmethod
