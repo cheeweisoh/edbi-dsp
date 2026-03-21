@@ -1,10 +1,9 @@
+from app.api.deps import get_db
+from app.services.auth_service import AuthService
 from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.api.deps import get_db
-from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 

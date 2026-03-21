@@ -1,13 +1,12 @@
 import uuid
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.exceptions import ConflictError, ForbiddenError, NotFoundError
 from app.models.group import Group
 from app.models.group_member import GroupMember
 from app.models.user import User
 from app.repositories.group_repo import GroupRepository
 from app.schemas.group import GroupCreate
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class GroupService:
@@ -30,18 +29,14 @@ class GroupService:
             raise NotFoundError(f"Group {group_id} not found")
         return group
 
-    async def add_member(
-        self, group_id: uuid.UUID, user_id: uuid.UUID, current_user: User
-    ) -> GroupMember:
+    async def add_member(self, group_id: uuid.UUID, user_id: uuid.UUID, current_user: User) -> GroupMember:
         group = await self.get_group(group_id)
         self._assert_group_admin(group, current_user)
         if await self.repo.get_member(group_id, user_id):
             raise ConflictError("User is already a member of this group")
         return await self.repo.add_member(group_id, user_id)
 
-    async def remove_member(
-        self, group_id: uuid.UUID, user_id: uuid.UUID, current_user: User
-    ) -> None:
+    async def remove_member(self, group_id: uuid.UUID, user_id: uuid.UUID, current_user: User) -> None:
         group = await self.get_group(group_id)
         self._assert_group_admin(group, current_user)
         member = await self.repo.get_member(group_id, user_id)

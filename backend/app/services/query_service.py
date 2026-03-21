@@ -3,8 +3,6 @@ import uuid
 from pathlib import Path
 
 import pandas as pd
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.config import settings
 from app.exceptions import NotFoundError
 from app.models.user import User
@@ -12,6 +10,7 @@ from app.repositories.dataset_repo import DatasetRepository
 from app.repositories.query_log_repo import QueryLogRepository
 from app.schemas.query import DataQueryResponse
 from app.services.permission_service import PermissionService
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class QueryService:
@@ -20,13 +19,7 @@ class QueryService:
         self.log_repo = QueryLogRepository(db)
         self.perm_svc = PermissionService(db)
 
-    async def read_dataset(
-        self,
-        dataset_id: uuid.UUID,
-        current_user: User,
-        limit: int | None = None,
-        offset: int = 0,
-    ) -> DataQueryResponse:
+    async def read_dataset(self, dataset_id: uuid.UUID, current_user: User, limit: int | None = None, offset: int = 0) -> DataQueryResponse:
         await self.perm_svc.verify_access(current_user, dataset_id, min_permission="query")
 
         dm = await self.dataset_repo.get_metadata(dataset_id)

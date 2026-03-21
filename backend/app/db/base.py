@@ -6,4 +6,6 @@ class Base(DeclarativeBase):
 
 
 # Import all models here so that Base.metadata is populated for Alembic and init_db
-from app.models import user, dataset, dataset_metadata, query_log, group, group_member, dataset_permission  # noqa: E402, F401
+from app.models import (dataset, dataset_metadata,  # noqa: E402, F401
+                        dataset_permission, group, group_member, query_log,
+                        user)

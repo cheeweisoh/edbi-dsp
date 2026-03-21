@@ -1,12 +1,11 @@
 import uuid
 
-from fastapi import APIRouter, Depends, status
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.api.deps import get_current_user, get_db
 from app.models.user import User
 from app.schemas.permission import PermissionGrant, PermissionResponse
 from app.services.permission_service import PermissionService
+from fastapi import APIRouter, Depends, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/datasets", tags=["permissions"])
 

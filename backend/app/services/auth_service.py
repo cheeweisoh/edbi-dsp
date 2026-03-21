@@ -1,9 +1,8 @@
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.security import create_access_token, verify_password
 from app.exceptions import UnauthorizedError
 from app.models.user import User
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class AuthService:

@@ -3,9 +3,6 @@ import json
 import uuid
 from pathlib import Path
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.config import settings
 from app.core.security import hash_password
 from app.db.init_db import create_tables
@@ -16,6 +13,8 @@ from app.models.dataset_permission import DatasetPermission
 from app.models.group import Group
 from app.models.group_member import GroupMember
 from app.models.user import User
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 async def _upsert_user(
