@@ -44,6 +44,10 @@ class TestListDatasets:
         resp = await client.get(BASE + "/")
         assert resp.status_code == 200
         assert len(resp.json()) == 2
+        first = resp.json()[0]
+        assert "table_name" in first
+        assert "display_name" in first
+        assert first["name"] == first["display_name"]
 
     async def test_deleted_dataset_excluded(self, client: AsyncClient) -> None:
         ds = await _create_dataset(client, "ToDelete")

@@ -52,33 +52,47 @@ class TestHelpers:
         context = GenSQLService._build_schema_context(
             [
                 {
-                    "name": "electricity_sales",
+                    "table_ref": "main.analytics.electricity_sales",
                     "metadata_json": {"description": "Electricity", "schema": [{"column": "year", "type": "INT"}]},
                 },
                 {
-                    "name": "water_consumption",
+                    "table_ref": "main.analytics.water_consumption",
                     "metadata_json": {"description": "Water", "schema": [{"column": "month", "type": "INT"}]},
                 },
             ]
         )
-        assert "Table: electricity_sales" in context
-        assert "Table: water_consumption" in context
+        assert "Table: main.analytics.electricity_sales" in context
+        assert "Table: main.analytics.water_consumption" in context
+
+    def test_qualify_sql_tables_maps_aliases_to_table_ref(self) -> None:
+        sql = "SELECT year FROM `Electricity Sales` JOIN electricity_sales ON 1=1"
+        alias_map = {
+            "electricity_sales": "main.analytics.electricity_sales",
+            "electricity sales": "main.analytics.electricity_sales",
+        }
+        qualified = GenSQLService._qualify_sql_tables(sql, alias_map)
+        assert "FROM main.analytics.electricity_sales" in qualified
+        assert "JOIN main.analytics.electricity_sales" in qualified
 
 
 class TestGenerateSql:
     async def test_generate_sql_happy_path(self, svc: GenSQLService, monkeypatch: pytest.MonkeyPatch) -> None:
         user = _make_user()
-        dataset = _make_dataset(owner_id=user.id, name="electricity_sales")
-        metadata = DatasetMetadata(dataset_id=dataset.id, metadata_json={"description": "Monthly electricity sales", "schema": [{"column": "year", "type": "INT", "description": "year"}]})
+        dataset = _make_dataset(owner_id=user.id, dataset_name="electricity_sales", display_name="Electricity Sales")
+        metadata = DatasetMetadata(
+            dataset_id=dataset.id,
+            file_path="main.analytics.electricity_sales",
+            metadata_json={"description": "Monthly electricity sales", "schema": [{"column": "year", "type": "INT", "description": "year"}]},
+        )
         svc.dataset_repo.list_accessible = AsyncMock(return_value=[dataset])
         svc.perm_svc.get_accessible_dataset_ids = AsyncMock(return_value={dataset.id})
         svc.dataset_repo.get_metadata = AsyncMock(return_value=metadata)
 
-        monkeypatch.setattr(GenSQLService, "_generate_with_ollama", staticmethod(lambda *_: "SELECT year FROM electricity_sales"))
+        monkeypatch.setattr(GenSQLService, "_generate_with_ollama", staticmethod(lambda *_: "SELECT year FROM Electricity Sales"))
 
         sql = await svc.generate_sql("show years", user)
 
-        assert sql == "SELECT year FROM electricity_sales"
+        assert sql == "SELECT year FROM main.analytics.electricity_sales"
         svc.perm_svc.get_accessible_dataset_ids.assert_awaited_once_with(user)
 
     async def test_generate_sql_raises_not_found_when_no_usable_metadata(self, svc: GenSQLService) -> None:
@@ -94,11 +108,12 @@ class TestGenerateSql:
     async def test_generate_sql_superuser_reads_all_active(self, svc: GenSQLService, monkeypatch: pytest.MonkeyPatch) -> None:
         user = _make_user()
         user.is_superuser = True
-        dataset = _make_dataset(owner_id=user.id, name="electricity_sales")
+        dataset = _make_dataset(owner_id=user.id, dataset_name="electricity_sales", display_name="Electricity Sales")
         svc.dataset_repo.list_active = AsyncMock(return_value=[dataset])
         svc.dataset_repo.get_metadata = AsyncMock(
             return_value=DatasetMetadata(
                 dataset_id=dataset.id,
+                file_path="main.analytics.electricity_sales",
                 metadata_json={"description": "x", "schema": [{"column": "year", "type": "INT"}]},
             )
         )
@@ -106,7 +121,7 @@ class TestGenerateSql:
 
         sql = await svc.generate_sql("q", user)
 
-        assert sql == "SELECT year FROM electricity_sales"
+        assert sql == "SELECT year FROM main.analytics.electricity_sales"
         svc.dataset_repo.list_active.assert_awaited_once()
 
     async def test_generate_sql_raises_forbidden_for_unsafe_sql(self, svc: GenSQLService, monkeypatch: pytest.MonkeyPatch) -> None:

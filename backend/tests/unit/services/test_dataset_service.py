@@ -26,7 +26,8 @@ def _make_user(**kwargs: object) -> User:
 def _make_dataset(owner_id: uuid.UUID, **kwargs: object) -> Dataset:
     defaults = dict(
         id=uuid.uuid4(),
-        name="Test Dataset",
+        dataset_name="test_dataset",
+        display_name="Test Dataset",
         description="desc",
         owner_id=owner_id,
         is_active=True,
@@ -72,12 +73,45 @@ class TestCreateDataset:
 class TestListDatasets:
     async def test_returns_active_datasets(self, svc: DatasetService) -> None:
         user = _make_user(is_superuser=True)
-        datasets = [_make_dataset(owner_id=user.id), _make_dataset(owner_id=user.id, name="D2")]
+        datasets = [
+            _make_dataset(owner_id=user.id),
+            _make_dataset(owner_id=user.id, dataset_name="d2", display_name="D2"),
+        ]
         svc.repo.list_active = AsyncMock(return_value=datasets)
+        svc.repo.get_metadata = AsyncMock(return_value=None)
 
         result = await svc.list_datasets(user)
 
         assert result == datasets
+
+    async def test_dedupes_by_uc_full_name_and_prefers_pretty_name(self, svc: DatasetService) -> None:
+        user = _make_user(is_superuser=True)
+        pretty = _make_dataset(owner_id=user.id, dataset_name="electricity_sales", display_name="Electricity Sales")
+        raw = _make_dataset(owner_id=user.id, dataset_name="edbi_teamg01.gold.electricity_sales", display_name="Edbi Teamg01 Gold Electricity Sales")
+        svc.repo.list_active = AsyncMock(return_value=[raw, pretty])
+        svc.repo.get_metadata = AsyncMock(
+            side_effect=[
+                DatasetMetadata(dataset_id=raw.id, metadata_json={"unity_catalog": {"full_name": "cat.sch.electricity_sales"}}),
+                DatasetMetadata(dataset_id=pretty.id, metadata_json={"unity_catalog": {"full_name": "cat.sch.electricity_sales"}}),
+            ]
+        )
+
+        result = await svc.list_datasets(user)
+
+        assert len(result) == 1
+        assert result[0].display_name == "Electricity Sales"
+
+    async def test_dedupes_snake_and_title_without_metadata(self, svc: DatasetService) -> None:
+        user = _make_user(is_superuser=True)
+        snake = _make_dataset(owner_id=user.id, dataset_name="case_offence_distribution", display_name="case_offence_distribution")
+        title = _make_dataset(owner_id=user.id, dataset_name="Case Offence Distribution", display_name="Case Offence Distribution")
+        svc.repo.list_active = AsyncMock(return_value=[snake, title])
+        svc.repo.get_metadata = AsyncMock(return_value=None)
+
+        result = await svc.list_datasets(user)
+
+        assert len(result) == 1
+        assert result[0].display_name == "Case Offence Distribution"
 
 
 class TestGetDataset:
