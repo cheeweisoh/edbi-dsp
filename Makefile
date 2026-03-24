@@ -1,7 +1,11 @@
-.PHONY: install bootstrap dev test lint streamlit all stop
+.PHONY: install reset-db bootstrap dev test lint streamlit all stop
 
 install:
 	uv pip install -r backend/requirements.txt
+
+reset-db:
+	@echo "Removing existing backend database..."
+	@rm -f backend/edbi_dsp.db
 
 bootstrap:
 	cd backend && uv run python -m app.db.bootstrap
@@ -18,7 +22,7 @@ lint:
 streamlit:
 	cd frontend && uv run streamlit run app.py
 
-all: bootstrap
+all: reset-db bootstrap
 	@echo "Starting Ollama service..."
 	@if ! ollama ps >/dev/null 2>&1; then \
 		ollama serve > ollama.log 2>&1 & \
