@@ -183,7 +183,8 @@ def manage_datasets_dialog() -> None:
 
     managed_datasets = datasets if is_superuser else [dataset for dataset in datasets if str(dataset["owner_id"]) == current_user_id]
     for dataset in managed_datasets:
-        with st.expander(dataset["name"], expanded=False):
+        dataset_name = dataset.get("display_name") or dataset.get("name") or "Unnamed Dataset"
+        with st.expander(dataset_name, expanded=False):
             if dataset.get("description"):
                 st.caption(dataset["description"])
 
@@ -404,10 +405,10 @@ def render_header():
 
 
 def render_tabs():
-    top_tabs = st.tabs(["Query Data", "All Products"])
+    top_tabs = st.tabs(["All Products", "Query Data"])
 
     with top_tabs[0]:
-        render_query_data()
+        render_catalog()
 
     with top_tabs[1]:
-        render_catalog()
+        render_query_data()

@@ -1,7 +1,28 @@
-import streamlit as st
 import pandas as pd
+import streamlit as st
 from services.dataset_service import DatasetService
 from services.query_service import QueryService
+
+
+def _safe_json_or_error(response, context: str) -> dict | None:
+    if response.status_code != 200:
+        detail = response.text
+        try:
+            body = response.json()
+            detail = body.get("detail", detail)
+        except ValueError:
+            pass
+        st.error(f"{context}: {detail}")
+        return None
+    try:
+        payload = response.json()
+    except ValueError:
+        st.error(f"{context}: Backend returned a non-JSON response.")
+        return None
+    if not isinstance(payload, dict):
+        st.error(f"{context}: Unexpected response shape.")
+        return None
+    return payload
 
 
 def apply_filters(df, filters):
@@ -49,16 +70,24 @@ def render_dataset_page():
     dataset_service = DatasetService(st.session_state.client)
     query_service = QueryService(st.session_state.client)
 
-    curr_dataset = dataset_service.get(st.session_state.selected_dataset).json()
-    curr_metadata = dataset_service.get_metadata(st.session_state.selected_dataset).json()
+    curr_dataset = _safe_json_or_error(dataset_service.get(st.session_state.selected_dataset), "Failed to load dataset")
+    if curr_dataset is None:
+        return
+    curr_metadata = _safe_json_or_error(dataset_service.get_metadata(st.session_state.selected_dataset), "Failed to load dataset metadata")
+    if curr_metadata is None:
+        return
+    metadata_json = curr_metadata.get("metadata_json") if isinstance(curr_metadata, dict) else {}
+    metadata_json = metadata_json if isinstance(metadata_json, dict) else {}
+    schema_rows = metadata_json.get("schema")
+    schema_rows = schema_rows if isinstance(schema_rows, list) else []
 
     if st.button("⬅ Back"):
         st.session_state.pop("selected_dataset")
-        st.session_state.pop("filtered_df")
+        st.session_state.pop("filtered_df", None)
         st.rerun()
 
-    st.markdown(f"## {curr_dataset['name']}")
-    st.markdown(curr_dataset["description"])
+    st.markdown(f"## {curr_dataset.get('name') or 'Dataset'}")
+    st.markdown(curr_dataset.get("description") or "No description provided.")
     st.divider()
 
     col1, col2, col3 = st.columns([20, 1, 40])
@@ -67,94 +96,117 @@ def render_dataset_page():
         st.markdown("### Data Product Information")
 
         metadata_items = [
-            ("Owner", curr_metadata["metadata_json"]["owner"]),
-            ("Agency", curr_metadata["metadata_json"]["agency"]),
-            ("Update Frequency", curr_metadata["metadata_json"]["update_frequency"]),
-            ("Last Updated", curr_metadata["metadata_json"]["last_updated"]),
-            ("Coverage Period", curr_metadata["metadata_json"]["coverage_period"]),
-            ("Data Quality", curr_metadata["metadata_json"]["data_quality"]),
-            ("Data Classification", curr_metadata["metadata_json"]["data_classification"]),
-            ("Data Sharing Classification", curr_metadata["metadata_json"]["sharing_classification"]),
-            ("Formats", ", ".join(curr_metadata["metadata_json"]["formats"])),
-            ("Managed By", curr_dataset["owner_id"]),
+            ("Owner", metadata_json.get("owner").split("@")[0]),
+            ("Owner Email", metadata_json.get("owner") or "-"),
+            ("Agency", metadata_json.get("agency") or "-"),
+            ("Update Frequency", metadata_json.get("update_frequency") or "-"),
+            ("Last Updated", metadata_json.get("updated_at") or metadata_json.get("last_updated") or str(curr_metadata.get("last_refreshed") or "-")),
+            ("Coverage Period", metadata_json.get("coverage_period") or "-"),
+            ("Data Quality", metadata_json.get("data_quality") or "-"),
+            ("Data Classification", metadata_json.get("data_classification") or "-"),
+            ("Data Sharing Classification", metadata_json.get("sharing_classification") or "-"),
+            ("Formats", ", ".join(metadata_json.get("formats", [])) if isinstance(metadata_json.get("formats"), list) else "csv"),
+            ("Managed By", metadata_json.get("updated_by") or "-"),
         ]
 
-        render_metadata_grid(metadata_items, 4)
-
-        st.markdown("### Data Dictionary")
-
-        data_dict_df = pd.DataFrame(curr_metadata["metadata_json"]["schema"])
-        data_dict_df.rename(columns={"column": "Column Name", "type": "Data Type", "description": "Description"}, inplace=True)
-        st.dataframe(data_dict_df, hide_index=True, width="stretch")
+        render_metadata_grid(metadata_items, 2)
 
     with col3:
-        st.markdown("### Data Preview")
+        st.markdown("### Data Dictionary")
 
-        query_res = query_service.query(st.session_state.selected_dataset, limit=None).json()
-        query_df = pd.DataFrame(query_res["rows"])
-        if "filtered_df" not in st.session_state:
-            st.session_state["filtered_df"] = query_df
+        data_dict_df = pd.DataFrame(schema_rows)
+        data_dict_df.rename(columns={"column": "Column Name", "type": "Data Type", "description": "Description"}, inplace=True)
+        if not data_dict_df.empty:
+            st.dataframe(data_dict_df, hide_index=True, width="stretch")
+        else:
+            st.info("No schema metadata available.")
 
-        st.markdown("#### Select Columns")
-        selected_columns = st.multiselect("Columns to include", query_res["columns"], default=query_res["columns"])
+    st.markdown("### Data Preview")
 
-        st.markdown("#### Filters")
-        filters = {}
+    query_res = _safe_json_or_error(query_service.query(st.session_state.selected_dataset, limit=None), "Failed to load dataset preview")
+    if query_res is None:
+        return
+    result_columns = query_res.get("columns", [])
+    result_rows = query_res.get("rows", [])
 
-        for col in selected_columns:
-            col_dtype = query_df[col].dtype
-            if pd.api.types.is_object_dtype(col_dtype) or pd.api.types.is_string_dtype(col_dtype):
-                options = sorted(query_df[col].dropna().unique().tolist())
-                filters[col] = st.multiselect(
-                    f"{col} values",
-                    options=options,
-                    default=options,
+    query_df = pd.DataFrame(result_rows)
+    if result_columns:
+        query_df = query_df.reindex(columns=result_columns)
+
+    if "filtered_df" not in st.session_state:
+        st.session_state["filtered_df"] = query_df
+
+    st.markdown("#### Select Columns")
+    selected_columns = st.multiselect("Columns to include", result_columns, default=result_columns)
+
+    st.markdown("#### Filters")
+    filters = {}
+
+    for col in selected_columns:
+        if col not in query_df.columns:
+            continue
+        col_dtype = query_df[col].dtype
+        if pd.api.types.is_object_dtype(col_dtype) or pd.api.types.is_string_dtype(col_dtype):
+            options = sorted(query_df[col].dropna().unique().tolist())
+            filters[col] = st.multiselect(
+                f"{col} values",
+                options=options,
+                default=options,
+                key=f"filter_{col}",
+            )
+        elif pd.api.types.is_integer_dtype(col_dtype):
+            numeric_values = pd.to_numeric(query_df[col], errors="coerce").dropna()
+            if numeric_values.empty:
+                continue
+            min_val, max_val = int(numeric_values.min()), int(numeric_values.max())
+
+            if min_val == max_val:
+                st.markdown(f"{col}: {min_val} (fixed)")
+                filters[col] = (min_val, max_val)
+            else:
+                filters[col] = st.slider(
+                    f"{col} range",
+                    min_val,
+                    max_val,
+                    (min_val, max_val),
+                    step=1,
                     key=f"filter_{col}",
                 )
-            elif pd.api.types.is_integer_dtype(col_dtype):
-                min_val, max_val = int(query_df[col].min()), int(query_df[col].max())
+        elif pd.api.types.is_float_dtype(col_dtype):
+            numeric_values = pd.to_numeric(query_df[col], errors="coerce").dropna()
+            if numeric_values.empty:
+                continue
+            min_val, max_val = float(numeric_values.min()), float(numeric_values.max())
+            if not (pd.notna(min_val) and pd.notna(max_val)):
+                continue
 
-                if min_val == max_val:
-                    st.markdown(f"{col}: {min_val} (fixed)")
-                    filters[col] = (min_val, max_val)
-                else:
-                    filters[col] = st.slider(
-                        f"{col} range",
-                        min_val,
-                        max_val,
-                        (min_val, max_val),
-                        step=1,
-                        key=f"filter_{col}",
-                    )
-            elif pd.api.types.is_float_dtype(col_dtype):
-                min_val, max_val = float(query_df[col].min()), float(query_df[col].max())
+            if min_val == max_val:
+                st.markdown(f"{col}: {min_val:.2f} (fixed)")
+                filters[col] = (min_val, max_val)
+            else:
+                filters[col] = st.slider(
+                    f"{col} range",
+                    min_val,
+                    max_val,
+                    (min_val, max_val),
+                    key=f"filter_{col}",
+                )
 
-                if min_val == max_val:
-                    st.markdown(f"{col}: {min_val:.2f} (fixed)")
-                    filters[col] = (min_val, max_val)
-                else:
-                    filters[col] = st.slider(
-                        f"{col} range",
-                        min_val,
-                        max_val,
-                        (min_val, max_val),
-                        key=f"filter_{col}",
-                    )
+    with st.container(horizontal=True):
+        if st.button("Generate Preview"):
+            selected_existing_columns = [col for col in selected_columns if col in query_df.columns]
+            filtered_df = apply_filters(query_df[selected_existing_columns], filters)
+            st.session_state["filtered_df"] = filtered_df
 
-        with st.container(horizontal=True):
-            if st.button("Generate Preview"):
-                filtered_df = apply_filters(query_df[selected_columns], filters)
-                st.session_state["filtered_df"] = filtered_df
+        st.download_button(
+            "Download Filtered Dataset (CSV)",
+            st.session_state["filtered_df"].to_csv(index=False),
+            file_name=f"{(curr_dataset.get('name') or 'dataset').replace(' ', '_')}_filtered.csv",
+            mime="text/csv",
+        )
 
-            st.download_button(
-                "Download Filtered Dataset (CSV)",
-                st.session_state["filtered_df"].to_csv(index=False),
-                file_name=f"{curr_dataset['name']}_filtered.csv",
-                mime="text/csv",
-            )
+    st.divider()
 
-        st.divider()
-
-        if "filtered_df" in st.session_state:
-            st.markdown("#### Preview (Top 10 Rows)")
-            st.dataframe(st.session_state["filtered_df"].head(10), width="stretch")
+    if "filtered_df" in st.session_state:
+        st.markdown("#### Preview")
+        st.dataframe(st.session_state["filtered_df"].head(10), width="stretch")
