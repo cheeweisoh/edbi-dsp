@@ -23,7 +23,11 @@ class DatasetRepository:
         return result.scalar_one_or_none()
 
     async def get_by_name(self, name: str) -> Dataset | None:
-        result = await self.db.execute(select(Dataset).where(Dataset.name == name))
+        result = await self.db.execute(
+            select(Dataset).where(
+                (Dataset.display_name == name) | (Dataset.dataset_name == name)
+            )
+        )
         return result.scalar_one_or_none()
 
     async def list_active(self) -> list[Dataset]:

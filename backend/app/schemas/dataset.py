@@ -20,11 +20,27 @@ class DatasetResponse(BaseModel):
     name: str
     description: str | None
     owner_id: UUID
+    owner_name: str | None = None
+    owner_email: str | None = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DatasetListResponse(BaseModel):
+    id: UUID
+    table_name: str
+    display_name: str
+    name: str
+    description: str | None
+    owner_id: UUID
+    owner_name: str | None = None
+    owner_email: str | None = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
 
 
 class DatasetMetadataUpsert(BaseModel):
@@ -48,5 +64,8 @@ class DatasetMetadataResponse(BaseModel):
     size_in_bytes: int | None
     last_refreshed: datetime | None
     metadata_json: dict | None
+    owner_id: UUID | None = None
+    owner_name: str | None = None
+    owner_email: str | None = None
 
     model_config = {"from_attributes": True}

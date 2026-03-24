@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
     OLLAMA_MODEL: str = "mistral-large-3:675b-cloud"
     OLLAMA_TIMEOUT_SECONDS: int = 120
+    DATABRICKS_HOST: str | None = None
+    DATABRICKS_TOKEN: str | None = None
+    DATABRICKS_SQL_WAREHOUSE_HTTP_PATH: str | None = None
+    DATABRICKS_UC_CATALOG: str | None = None
+    DATABRICKS_UC_SCHEMA: str | None = None
 
     model_config = SettingsConfigDict(env_file=BASE_DIR / ".env", extra="ignore")
 

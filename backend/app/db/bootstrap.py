@@ -1,7 +1,6 @@
 import asyncio
-import json
 import uuid
-from pathlib import Path
+from typing import Any
 
 from app.core.config import settings
 from app.core.security import hash_password
@@ -13,6 +12,8 @@ from app.models.dataset_permission import DatasetPermission
 from app.models.group import Group
 from app.models.group_member import GroupMember
 from app.models.user import User
+from app.services.databricks_uc_service import DatabricksUnityCatalogService
+from app.utils.datetime_utils import unix_to_minute_datetime
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -121,43 +122,74 @@ async def _ensure_permission(
         print(f"  Permission already exists for {grantee_type} {grantee_id} on dataset {dataset_id}")
 
 
-async def _seed_dataset(db: AsyncSession, meta: dict, owner_id: uuid.UUID) -> Dataset:
-    name = meta["id"]
-    result = await db.execute(select(Dataset).where(Dataset.name == name))
+async def _seed_dataset(db: AsyncSession, table: dict[str, Any], owner_id: uuid.UUID) -> Dataset:
+    dataset_name = table["dataset_name"]
+    display_name = table["display_name"]
+    full_name = table["full_name"]
+    description = table.get("description")
+    if description is None:
+        description = table.get("comment")
+    metadata_json = {
+        "id": dataset_name,
+        "display_name": display_name,
+        "description": description,
+        "owner": table.get("owner"),
+        "agency": "AGC",
+        "update_frequency": "Daily",
+        "data_quality": "Internal",
+        "data_classification": "Confidential (Cloud-Eligible)",
+        "updated_by": table.get("updated_by"),
+        "updated_at": unix_to_minute_datetime(table.get("updated_at")),
+        "formats": ["csv"],
+        "source": "databricks_unity_catalog",
+        "unity_catalog": {
+            "catalog_name": table.get("catalog_name"),
+            "schema_name": table.get("schema_name"),
+            "table_name": display_name,
+            "full_name": full_name,
+            "table_type": table.get("table_type"),
+        },
+        "schema": table.get("columns", []),
+    }
+    result = await db.execute(select(Dataset).where(Dataset.dataset_name == dataset_name))
     dataset = result.scalar_one_or_none()
     if dataset is None:
         dataset = Dataset(
-            name=name,
-            description=meta.get("description"),
+            dataset_name=dataset_name,
+            display_name=display_name,
+            description=description,
             owner_id=owner_id,
         )
         db.add(dataset)
         await db.commit()
         await db.refresh(dataset)
-        print(f"  Created dataset: {name}")
+        print(f"  Created dataset: {dataset_name}")
     else:
-        print(f"  Dataset already exists, skipping create: {name}")
+        dataset.description = description
+        await db.commit()
+        await db.refresh(dataset)
+        print(f"  Dataset already exists, skipping create: {dataset_name}")
 
     result = await db.execute(select(DatasetMetadata).where(DatasetMetadata.dataset_id == dataset.id))
     dm = result.scalar_one_or_none()
     if dm is None:
         dm = DatasetMetadata(
             dataset_id=dataset.id,
-            schema_name=meta.get("schema_name"),
-            table_name=meta.get("table_name"),
-            source_system=meta.get("source"),
-            file_path=meta.get("path"),
-            metadata_json=meta,
+            schema_name=table.get("schema_name"),
+            table_name=dataset_name,
+            source_system="databricks_unity_catalog",
+            file_path=full_name,
+            metadata_json=metadata_json,
         )
         db.add(dm)
     else:
-        dm.schema_name = meta.get("schema_name")
-        dm.table_name = meta.get("table_name")
-        dm.source_system = meta.get("source")
-        dm.file_path = meta.get("path")
-        dm.metadata_json = meta
+        dm.schema_name = table.get("schema_name")
+        dm.table_name = dataset_name
+        dm.source_system = "databricks_unity_catalog"
+        dm.file_path = full_name
+        dm.metadata_json = metadata_json
     await db.commit()
-    print(f"  Upserted metadata for dataset: {name}")
+    print(f"  Upserted metadata for dataset: {dataset_name}")
     return dataset
 
 
@@ -165,11 +197,15 @@ async def bootstrap_db() -> None:
     print("Creating database tables...")
     await create_tables()
 
-    data_dir = Path(settings.DATA_DIR)
-    metadata_files = sorted(data_dir.glob("*_metadata.json"))
-    if not metadata_files:
-        print(f"No metadata files found in {data_dir.resolve()}")
-        return
+    if not settings.DATABRICKS_UC_CATALOG or not settings.DATABRICKS_UC_SCHEMA:
+        raise ValueError("DATABRICKS_UC_CATALOG and DATABRICKS_UC_SCHEMA must be configured")
+
+    tables = await DatabricksUnityCatalogService().list_tables(
+        catalog_name=settings.DATABRICKS_UC_CATALOG,
+        schema_name=settings.DATABRICKS_UC_SCHEMA,
+    )
+    if not tables:
+        print(f"No Unity Catalog tables found in " f"{settings.DATABRICKS_UC_CATALOG}.{settings.DATABRICKS_UC_SCHEMA}")
 
     async with AsyncSessionLocal() as db:
         # --- Users ---
@@ -190,13 +226,11 @@ async def bootstrap_db() -> None:
         )
 
         # --- Datasets ---
-        print(f"\nSeeding {len(metadata_files)} dataset(s) from {data_dir.resolve()}...")
+        print(f"\nSeeding {len(tables)} dataset(s) from " f"{settings.DATABRICKS_UC_CATALOG}.{settings.DATABRICKS_UC_SCHEMA}...")
         datasets: dict[str, Dataset] = {}
-        for meta_file in metadata_files:
-            with meta_file.open() as f:
-                meta = json.load(f)
-            ds = await _seed_dataset(db, meta, admin.id)
-            datasets[ds.name] = ds
+        for table in tables:
+            ds = await _seed_dataset(db, table, admin.id)
+            datasets[ds.display_name] = ds
 
         # --- Group for analyst ---
         print("\nSeeding groups and permissions...")
