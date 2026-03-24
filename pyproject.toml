@@ -7,6 +7,9 @@ requires-python = ">=3.14"
 dependencies = [
     "aiosqlite>=0.22.1",
     "bcrypt>=5.0.0",
+    "databricks>=0.2",
+    "databricks-sdk>=0.72.0",
+    "databricks-sql-connector>=4.1.4",
     "fastapi>=0.135.1",
     "greenlet>=3.3.2",
     "httpx>=0.28.1",
@@ -21,6 +24,7 @@ dependencies = [
     "requests>=2.32.5",
     "sqlalchemy>=2.0.48",
     "streamlit>=1.55.0",
+    "uvicorn>=0.42.0",
 ]
 
 [tool.pytest.ini_options]
