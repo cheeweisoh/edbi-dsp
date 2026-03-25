@@ -39,6 +39,32 @@ def apply_filters(df, filters):
     return df
 
 
+def _coerce_date_like_columns(df: pd.DataFrame) -> pd.DataFrame:
+    coerced_df = df.copy()
+    date_name_hints = ("date", "time", "timestamp", "created", "updated")
+
+    for col in coerced_df.columns:
+        series = coerced_df[col]
+        if not (pd.api.types.is_object_dtype(series.dtype) or pd.api.types.is_string_dtype(series.dtype)):
+            continue
+
+        non_null = series.dropna()
+        if non_null.empty:
+            continue
+
+        sample_text = " ".join(non_null.astype(str).head(20).tolist()).lower()
+        has_name_hint = any(hint in col.lower() for hint in date_name_hints)
+        has_date_separators = "-" in sample_text or "/" in sample_text or ":" in sample_text
+        if not (has_name_hint or has_date_separators):
+            continue
+
+        parsed = pd.to_datetime(series, errors="coerce")
+        if parsed.notna().sum() == len(non_null):
+            coerced_df[col] = parsed
+
+    return coerced_df
+
+
 def render_metadata_grid(items: list[tuple], cols_per_row: int = 4):
     for i in range(0, len(items), cols_per_row):
         row_items = items[i : i + cols_per_row]
@@ -96,15 +122,15 @@ def render_dataset_page():
         st.markdown("### Data Product Information")
 
         metadata_items = [
-            ("Owner", metadata_json.get("owner").split("@")[0]),
+            ("Owner", metadata_json.get("owner").split("@")[0].replace("_", " ").title()),
             ("Owner Email", metadata_json.get("owner") or "-"),
             ("Agency", metadata_json.get("agency") or "-"),
             ("Update Frequency", metadata_json.get("update_frequency") or "-"),
             ("Last Updated", metadata_json.get("updated_at") or metadata_json.get("last_updated") or str(curr_metadata.get("last_refreshed") or "-")),
             ("Coverage Period", metadata_json.get("coverage_period") or "-"),
-            ("Data Quality", metadata_json.get("data_quality") or "-"),
+            ("Data Quality", "100%"),
             ("Data Classification", metadata_json.get("data_classification") or "-"),
-            ("Data Sharing Classification", metadata_json.get("sharing_classification") or "-"),
+            ("Data Sharing Classification", metadata_json.get("data_quality") or "-"),
             ("Formats", ", ".join(metadata_json.get("formats", [])) if isinstance(metadata_json.get("formats"), list) else "csv"),
             ("Managed By", metadata_json.get("updated_by") or "-"),
         ]
@@ -132,6 +158,7 @@ def render_dataset_page():
     query_df = pd.DataFrame(result_rows)
     if result_columns:
         query_df = query_df.reindex(columns=result_columns)
+    query_df = _coerce_date_like_columns(query_df)
 
     if "filtered_df" not in st.session_state:
         st.session_state["filtered_df"] = query_df
@@ -146,8 +173,28 @@ def render_dataset_page():
         if col not in query_df.columns:
             continue
         col_dtype = query_df[col].dtype
-        if pd.api.types.is_object_dtype(col_dtype) or pd.api.types.is_string_dtype(col_dtype):
+        if pd.api.types.is_datetime64_any_dtype(col_dtype):
+            datetime_values = pd.to_datetime(query_df[col], errors="coerce").dropna()
+            if datetime_values.empty:
+                continue
+            min_val = datetime_values.min().to_pydatetime()
+            max_val = datetime_values.max().to_pydatetime()
+
+            if min_val == max_val:
+                st.markdown(f"{col}: {min_val:%Y-%m-%d %H:%M:%S} (fixed)")
+                filters[col] = (min_val, max_val)
+            else:
+                filters[col] = st.slider(
+                    f"{col} range",
+                    min_value=min_val,
+                    max_value=max_val,
+                    value=(min_val, max_val),
+                    key=f"filter_{col}",
+                )
+        elif pd.api.types.is_object_dtype(col_dtype) or pd.api.types.is_string_dtype(col_dtype):
             options = sorted(query_df[col].dropna().unique().tolist())
+            if len(options) > 10:
+                continue
             filters[col] = st.multiselect(
                 f"{col} values",
                 options=options,
@@ -209,4 +256,4 @@ def render_dataset_page():
 
     if "filtered_df" in st.session_state:
         st.markdown("#### Preview")
-        st.dataframe(st.session_state["filtered_df"].head(10), width="stretch")
+        st.dataframe(st.session_state["filtered_df"].head(10), width="stretch", hide_index=True)
