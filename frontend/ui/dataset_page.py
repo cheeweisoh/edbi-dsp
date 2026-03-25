@@ -65,6 +65,12 @@ def _coerce_date_like_columns(df: pd.DataFrame) -> pd.DataFrame:
     return coerced_df
 
 
+def _clear_filter_widget_state() -> None:
+    filter_keys = [key for key in st.session_state if str(key).startswith("filter_")]
+    for key in filter_keys:
+        st.session_state.pop(key, None)
+
+
 def render_metadata_grid(items: list[tuple], cols_per_row: int = 4):
     for i in range(0, len(items), cols_per_row):
         row_items = items[i : i + cols_per_row]
@@ -163,97 +169,101 @@ def render_dataset_page():
     if "filtered_df" not in st.session_state:
         st.session_state["filtered_df"] = query_df
 
-    st.markdown("#### Select Columns")
-    selected_columns = st.multiselect("Columns to include", result_columns, default=result_columns)
-
-    st.markdown("#### Filters")
     filters = {}
+    with st.expander("Filter and column controls", expanded=False):
+        st.caption("Pick columns first, then narrow records with filters. Empty filters mean no restriction.")
+        selected_columns = st.multiselect("Columns to include", result_columns, default=result_columns)
 
-    for col in selected_columns:
-        if col not in query_df.columns:
-            continue
-        col_dtype = query_df[col].dtype
-        if pd.api.types.is_datetime64_any_dtype(col_dtype):
-            datetime_values = pd.to_datetime(query_df[col], errors="coerce").dropna()
-            if datetime_values.empty:
-                continue
-            min_val = datetime_values.min().to_pydatetime()
-            max_val = datetime_values.max().to_pydatetime()
+        filterable_columns = [col for col in selected_columns if col in query_df.columns]
+        filter_grid_columns = st.columns(2)
+        for idx, col in enumerate(filterable_columns):
+            with filter_grid_columns[idx % 2]:
+                col_dtype = query_df[col].dtype
+                if pd.api.types.is_datetime64_any_dtype(col_dtype):
+                    datetime_values = pd.to_datetime(query_df[col], errors="coerce").dropna()
+                    if datetime_values.empty:
+                        continue
+                    min_val = datetime_values.min().to_pydatetime()
+                    max_val = datetime_values.max().to_pydatetime()
+                    if min_val == max_val:
+                        st.caption(f"{col}: {min_val:%Y-%m-%d %H:%M:%S} (fixed)")
+                        filters[col] = (min_val, max_val)
+                    else:
+                        filters[col] = st.slider(
+                            f"{col}",
+                            min_value=min_val,
+                            max_value=max_val,
+                            value=(min_val, max_val),
+                            key=f"filter_{col}",
+                        )
+                elif pd.api.types.is_object_dtype(col_dtype) or pd.api.types.is_string_dtype(col_dtype):
+                    options = sorted(query_df[col].dropna().unique().tolist())
+                    if len(options) > 20:
+                        continue
+                    filters[col] = st.multiselect(
+                        f"{col}",
+                        options=options,
+                        default=[],
+                        key=f"filter_{col}",
+                        placeholder="All values",
+                    )
+                elif pd.api.types.is_integer_dtype(col_dtype):
+                    numeric_values = pd.to_numeric(query_df[col], errors="coerce").dropna()
+                    if numeric_values.empty:
+                        continue
+                    min_val, max_val = int(numeric_values.min()), int(numeric_values.max())
+                    if min_val == max_val:
+                        st.caption(f"{col}: {min_val} (fixed)")
+                        filters[col] = (min_val, max_val)
+                    else:
+                        filters[col] = st.slider(
+                            f"{col}",
+                            min_val,
+                            max_val,
+                            (min_val, max_val),
+                            step=1,
+                            key=f"filter_{col}",
+                        )
+                elif pd.api.types.is_float_dtype(col_dtype):
+                    numeric_values = pd.to_numeric(query_df[col], errors="coerce").dropna()
+                    if numeric_values.empty:
+                        continue
+                    min_val, max_val = float(numeric_values.min()), float(numeric_values.max())
+                    if not (pd.notna(min_val) and pd.notna(max_val)):
+                        continue
+                    if min_val == max_val:
+                        st.caption(f"{col}: {min_val:.2f} (fixed)")
+                        filters[col] = (min_val, max_val)
+                    else:
+                        filters[col] = st.slider(
+                            f"{col}",
+                            min_val,
+                            max_val,
+                            (min_val, max_val),
+                            key=f"filter_{col}",
+                        )
 
-            if min_val == max_val:
-                st.markdown(f"{col}: {min_val:%Y-%m-%d %H:%M:%S} (fixed)")
-                filters[col] = (min_val, max_val)
-            else:
-                filters[col] = st.slider(
-                    f"{col} range",
-                    min_value=min_val,
-                    max_value=max_val,
-                    value=(min_val, max_val),
-                    key=f"filter_{col}",
-                )
-        elif pd.api.types.is_object_dtype(col_dtype) or pd.api.types.is_string_dtype(col_dtype):
-            options = sorted(query_df[col].dropna().unique().tolist())
-            if len(options) > 10:
-                continue
-            filters[col] = st.multiselect(
-                f"{col} values",
-                options=options,
-                default=options,
-                key=f"filter_{col}",
-            )
-        elif pd.api.types.is_integer_dtype(col_dtype):
-            numeric_values = pd.to_numeric(query_df[col], errors="coerce").dropna()
-            if numeric_values.empty:
-                continue
-            min_val, max_val = int(numeric_values.min()), int(numeric_values.max())
-
-            if min_val == max_val:
-                st.markdown(f"{col}: {min_val} (fixed)")
-                filters[col] = (min_val, max_val)
-            else:
-                filters[col] = st.slider(
-                    f"{col} range",
-                    min_val,
-                    max_val,
-                    (min_val, max_val),
-                    step=1,
-                    key=f"filter_{col}",
-                )
-        elif pd.api.types.is_float_dtype(col_dtype):
-            numeric_values = pd.to_numeric(query_df[col], errors="coerce").dropna()
-            if numeric_values.empty:
-                continue
-            min_val, max_val = float(numeric_values.min()), float(numeric_values.max())
-            if not (pd.notna(min_val) and pd.notna(max_val)):
-                continue
-
-            if min_val == max_val:
-                st.markdown(f"{col}: {min_val:.2f} (fixed)")
-                filters[col] = (min_val, max_val)
-            else:
-                filters[col] = st.slider(
-                    f"{col} range",
-                    min_val,
-                    max_val,
-                    (min_val, max_val),
-                    key=f"filter_{col}",
-                )
-
-    with st.container(horizontal=True):
-        if st.button("Generate Preview"):
-            selected_existing_columns = [col for col in selected_columns if col in query_df.columns]
+    selected_existing_columns = [col for col in selected_columns if col in query_df.columns]
+    actions_col1, actions_col2 = st.columns([1, 1])
+    with actions_col1:
+        if st.button("Apply Filters", use_container_width=True):
             filtered_df = apply_filters(query_df[selected_existing_columns], filters)
             st.session_state["filtered_df"] = filtered_df
-
-        st.download_button(
-            "Download Filtered Dataset (CSV)",
-            st.session_state["filtered_df"].to_csv(index=False),
-            file_name=f"{(curr_dataset.get('name') or 'dataset').replace(' ', '_')}_filtered.csv",
-            mime="text/csv",
-        )
-
+    with actions_col2:
+        if st.button("Reset Filters", use_container_width=True):
+            _clear_filter_widget_state()
+            st.session_state["filtered_df"] = query_df[selected_existing_columns].copy()
+            st.rerun()
     st.divider()
 
     if "filtered_df" in st.session_state:
         st.markdown("#### Preview")
         st.dataframe(st.session_state["filtered_df"].head(10), width="stretch", hide_index=True)
+
+    st.download_button(
+        "Download Filtered Dataset (CSV)",
+        st.session_state["filtered_df"].to_csv(index=False),
+        file_name=f"{(curr_dataset.get('name') or 'dataset').replace(' ', '_')}_filtered.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
