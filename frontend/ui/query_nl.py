@@ -11,7 +11,7 @@ def render_query_data():
 
     user_input = st.text_area(
         "Describe your query",
-        placeholder="e.g. Show me total electricity sales by sector for 2024",
+        placeholder="e.g. Show me the number of cases that started in each year.",
         height=120,
     )
 
@@ -26,8 +26,6 @@ def render_query_data():
                     st.error(f"Error: {detail}")
                     return
                 sql = response.json().get("sql", "")
-                # st.markdown("#### Generated SQL")
-                # st.code(sql, language="sql")
 
                 query_response = query_service.query_sql(sql)
                 if query_response.status_code != 200:
@@ -42,5 +40,9 @@ def render_query_data():
                     st.dataframe(df, width="stretch", hide_index=True)
                 else:
                     st.info("No results returned.")
+
+                with st.expander("SQL Query", expanded=False):
+                    st.code(sql, language="sql")
+
             except Exception as e:
                 st.error(f"Error: {str(e)}")
