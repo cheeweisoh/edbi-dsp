@@ -236,23 +236,12 @@ async def bootstrap_db() -> None:
         print("\nSeeding groups and permissions...")
         analyst_group = await _upsert_group(
             db,
-            name="electricity-viewers",
-            description="Users who can view and query the electricity sales dataset",
+            name="team-leaders",
+            description="Officers that can only view officer case load datasets.",
             created_by=admin.id,
         )
         await _ensure_member(db, analyst_group.id, user.id)
         await _keep_only_group(db, analyst_group.id)
-
-        # Grant query access on electricity_sales only
-        if "electricity_sales" in datasets:
-            await _ensure_permission(
-                db,
-                dataset_id=datasets["electricity_sales"].id,
-                grantee_type="group",
-                grantee_id=analyst_group.id,
-                permission="query",
-                granted_by=admin.id,
-            )
 
     print("\nBootstrap complete.")
     print(f"  Admin:   {settings.BOOTSTRAP_USER_EMAIL} / {settings.BOOTSTRAP_USER_PASSWORD}")
